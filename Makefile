@@ -15,9 +15,13 @@ build:
 	@echo "Build completed: $(BUILD_DIR)/$(BINARY_NAME)"
 
 
+run:
+	@echo "Running binary"
+	go run $(SOURCE_FILES)
+
 clean: 
 	@echo "Cleaning up..."
 	@rm -rf $(BUILD_DIR)
 	@echo "Clean completed."
 
-.PHONY: build clean
+.PHONY: build run clean
