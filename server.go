@@ -21,26 +21,29 @@ type CreateUserBody struct {
 	Age       int    `json:"age"`
 }
 
+type CreateVMBody struct {
+	Name     string `json:"name"`
+	NumCPUs  int    `json:"numcpus"`
+	MemoryMB int    `json:"memorymb"`
+}
+
 type Server struct {
 	tokenService TokenService
 	userService  UserService
+	vmService    VMService
 	port         int
 	host         string
 }
 
 // NewServer creates a new server with the given token service, users and port.
-// The host defaults to "localhost".
-// The port defaults to 8080.
-// The token service must not be nil.
-func NewServer(tokenService TokenService, userService UserService, port int, host string) *Server {
-	return &Server{tokenService: tokenService, userService: userService, port: port, host: host}
+func NewServer(tokenService TokenService, userService UserService, vmService VMService, port int, host string) *Server {
+	return &Server{tokenService: tokenService, userService: userService, vmService: vmService, port: port, host: host}
 }
 
 // Run configures http routing using gin library and starts the server.
 func (s *Server) Run() {
 	r := gin.Default()
-	//r.Use(gin.Logger())
-	//r.Use(gin.Recovery())
+	r.Use(gin.Recovery())
 	r.POST("/login", s.login)
 	authorized := r.Group("/")
 	authorized.Use(s.AuthMiddleware())
@@ -53,12 +56,14 @@ func (s *Server) Run() {
 		authorized.DELETE("/users/:id", s.deleteUser)
 		authorized.POST("/reject", s.reject)
 		authorized.GET("/rejected", s.listRejected)
+		authorized.POST("/vms", s.createVM)
 	}
 
 	r.Run(fmt.Sprintf(":%d", s.port))
 	fmt.Printf("Server listening on port %d\n", s.port)
 }
 
+// AuthMiddleware returns a gin.HandlerFunc that checks if the user is authenticated.
 func (s *Server) AuthMiddleware() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		// get authorization token from header
@@ -84,7 +89,9 @@ func (s *Server) AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		// set user in context
 		ctx.Set("user", user)
+
 		ctx.Next()
 	}
 }
@@ -122,6 +129,7 @@ func (s *Server) createUser(ctx *gin.Context) {
 	ctx.JSON(http.StatusCreated, user)
 }
 
+// getUser is a handler that returns the user with the given ID.
 func (s *Server) getUser(ctx *gin.Context) {
 	// get user based on id
 	id := ctx.Param("id")
@@ -136,6 +144,7 @@ func (s *Server) getUser(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, user)
 }
 
+// deleteUser is a handler that deletes the user with the given ID.
 func (s *Server) deleteUser(ctx *gin.Context) {
 	// get user id from path
 	id := ctx.Param("id")
@@ -152,7 +161,7 @@ func (s *Server) deleteUser(ctx *gin.Context) {
 }
 
 // updateUser updates the user with the given id
-// with the given struct containing name, firstname, lastname, password, role and age.
+// using the given user body.
 func (s *Server) updateUser(ctx *gin.Context) {
 	var updateUserBody CreateUserBody
 	if err := ctx.ShouldBindJSON(&updateUserBody); err != nil {
@@ -173,7 +182,7 @@ func (s *Server) updateUser(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, user)
 }
 
-// listUsers returns a list of users.
+// listUsers is a handler that returns a list of all users.
 func (s *Server) listUsers(ctx *gin.Context) {
 	users, err := s.userService.ListUsers()
 	if err != nil {
@@ -185,7 +194,7 @@ func (s *Server) listUsers(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, users)
 }
 
-// login authenticates the given user and returns a JWT token.
+// login is a handler that authenticates the given user and returns a JWT token.
 func (s *Server) login(ctx *gin.Context) {
 	// validate loginuser password and generate token
 	var loginUserBody LoginUserBody
@@ -216,7 +225,7 @@ func (s *Server) login(ctx *gin.Context) {
 	})
 }
 
-// reject a JWT token provided in the header.
+// reject is a handler that rejects the token
 func (s *Server) reject(ctx *gin.Context) {
 	tokenString := ctx.Request.Header.Get("Authorization")
 	if tokenString == "" {
@@ -240,7 +249,7 @@ func (s *Server) reject(ctx *gin.Context) {
 	})
 }
 
-// listRejected handler returns the list of rejected tokens.
+// listRejected is a handler that returns the list of rejected tokens.
 func (s *Server) listRejected(ctx *gin.Context) {
 	tokens, err := s.tokenService.GetRejectedTokens()
 	if err != nil {
@@ -252,4 +261,24 @@ func (s *Server) listRejected(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{
 		"tokens": tokens,
 	})
+}
+
+func (s *Server) createVM(ctx *gin.Context) {
+	var createVMBody CreateVMBody
+	if err := ctx.ShouldBindJSON(&createVMBody); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": err.Error(),
+		})
+		return
+	}
+
+	task, err := s.vmService.CreateVM(&createVMBody)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusCreated, task)
 }

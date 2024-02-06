@@ -5,7 +5,10 @@ package main
 func main() {
 	tokenService := NewTokenService("secret")
 	userService := NewUserService()
+	vmService := NewVMService()
 
-	server := NewServer(tokenService, userService, 8090, "localhost")
+	go vmService.UpdateDeploymentStatus()
+
+	server := NewServer(tokenService, userService, vmService, 8090, "localhost")
 	server.Run()
 }
